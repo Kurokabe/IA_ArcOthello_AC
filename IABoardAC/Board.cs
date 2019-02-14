@@ -296,7 +296,7 @@ namespace ArcOthello_AC
         /// <returns>IA's name</returns>
         public string GetName()
         {
-            return "Jack - Javascript for the win";
+            return "Jack - Java for the win";
         }
 
         /// <summary>
@@ -402,7 +402,7 @@ namespace ArcOthello_AC
                         break;
                 }
             }
-            currentNode.Mobility += availableOps.Count;
+            currentNode.Mobility += availableOps.Count * minOrMax;
             return currentNode;
         }
 
@@ -412,7 +412,7 @@ namespace ArcOthello_AC
 
             double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0);
 
-            //score *= (int)(mobility * ratio);
+            score *= (int)(Math.Max(mobility, 1.0) * ratio);
 
             return score;
         }
