@@ -13,7 +13,7 @@ namespace ArcOthello_AC
         private const int WALL_MALUS = 8;
         private const int CORNER_GIVING_MALUS = 20;
         private const int EARLY_ROUNDS = 15;    // Number of rounds until the mobility is far less interesting
-        private const int BLOCKING_OPPONENT = 0;
+        private const int BLOCKING_OPPONENT = 200;
         private int roundNumber = 0;
         #endregion
 
@@ -296,7 +296,7 @@ namespace ArcOthello_AC
         /// <returns>IA's name</returns>
         public string GetName()
         {
-            return "Jack - Java for the win";
+            return "Jack - Csharp for the win";
         }
 
         /// <summary>
@@ -375,22 +375,23 @@ namespace ArcOthello_AC
         private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, int parentScore, int pieceSample)
         {
             bool isWhite = pieceSample == 0;
-            bool isFinal = IsFinal(gameRoot);
-            if (level == 0 || isFinal)
+
+            var availableOps = GetOps(gameRoot, isWhite);
+
+            if (level == 0 || IsFinal(gameRoot) || !availableOps.Any())
             {
-                int score = Eval(gameRoot, isWhite);
-                if (isFinal)
-                    score += -minOrMax * BLOCKING_OPPONENT;
-                return new AlphabetaNode(score);
+                int bonus = 0;
+                if (availableOps.Count == 0)
+                    bonus += -minOrMax * BLOCKING_OPPONENT;
+                return new AlphabetaNode(Eval(gameRoot, isWhite) + bonus);
             }
 
             var currentNode = new AlphabetaNode(minOrMax * -int.MaxValue);
 
-            var availableOps = GetOps(gameRoot, isWhite);
-
             foreach (var op in availableOps)
             {
                 int[,] newBoard = Apply(gameRoot, op, isWhite);
+
                 var branchResult = Alphabeta(newBoard, level - 1, -minOrMax, currentNode.Value, (pieceSample + 1) % 2);
                 int val = CalculateScore(branchResult.Value, GetBonus(op), branchResult.Mobility);
                 
@@ -492,8 +493,7 @@ namespace ArcOthello_AC
             }
             return false;
         }
-
-
+        
         private bool IsInWall(Tuple<int, int> op)
         {
             if (op.Item1 == 0 || op.Item1 == GridWidth)
