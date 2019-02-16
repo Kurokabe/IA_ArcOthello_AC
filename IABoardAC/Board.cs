@@ -9,11 +9,11 @@ namespace ArcOthello_AC
     public class Board : IPlayable.IPlayable
     {
         #region IA Parameters
-        private const int CORNER_BONUS = 15;
+        private const int CORNER_BONUS = 50000;
         private const int WALL_MALUS = 8;
-        private const int CORNER_GIVING_MALUS = 20;
+        private const int CORNER_GIVING_MALUS = 75;
         private const int EARLY_ROUNDS = 15;    // Number of rounds until the mobility is far less interesting
-        private const int BLOCKING_OPPONENT = 200;
+        private const int BLOCKING_OPPONENT = 0;
         private int roundNumber = 0;
         #endregion
 
@@ -296,7 +296,7 @@ namespace ArcOthello_AC
         /// <returns>IA's name</returns>
         public string GetName()
         {
-            return "Jack - Csharp for the win";
+            return "Jack - Java for the win";
         }
 
         /// <summary>
@@ -357,7 +357,7 @@ namespace ArcOthello_AC
         {
             // save board
             var savedBoard = GetBoard();
-            var node = Alphabeta(game, level, 1, Eval(game, whiteTurn), whiteTurn ? 0 : 1);
+            var node = Alphabeta(game, 1, 1, Eval(game, whiteTurn), whiteTurn ? 0 : 1);
             // restore board
             RestoreBoard(savedBoard);
             return node.Move;
@@ -372,7 +372,7 @@ namespace ArcOthello_AC
         /// <param name="parentScore">parent's board fitness value</param>
         /// <param name="pieceSample">0 for white 1 for black</param>
         /// <returns></returns>
-        private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, int parentScore, int pieceSample)
+        private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, int parentScore, int pieceSample, Tuple<int, int> lastOp = null, int mobility = 0)
         {
             bool isWhite = pieceSample == 0;
 
@@ -383,7 +383,7 @@ namespace ArcOthello_AC
                 int bonus = 0;
                 if (availableOps.Count == 0)
                     bonus += -minOrMax * BLOCKING_OPPONENT;
-                return new AlphabetaNode(Eval(gameRoot, isWhite) + bonus);
+                return new AlphabetaNode(Eval(gameRoot, isWhite, GetBonus(lastOp), mobility) + bonus);
             }
 
             var currentNode = new AlphabetaNode(minOrMax * -int.MaxValue);
@@ -392,8 +392,8 @@ namespace ArcOthello_AC
             {
                 int[,] newBoard = Apply(gameRoot, op, isWhite);
 
-                var branchResult = Alphabeta(newBoard, level - 1, -minOrMax, currentNode.Value, (pieceSample + 1) % 2);
-                int val = CalculateScore(branchResult.Value, GetBonus(op), branchResult.Mobility);
+                var branchResult = Alphabeta(newBoard, level - 1, -minOrMax, currentNode.Value, (pieceSample + 1) % 2, op, mobility + availableOps.Count * minOrMax);
+                int val = branchResult.Value;
                 
                 if (val * minOrMax > currentNode.Value * minOrMax)
                 {
@@ -403,20 +403,19 @@ namespace ArcOthello_AC
                         break;
                 }
             }
-            currentNode.Mobility += availableOps.Count * minOrMax;
             return currentNode;
         }
 
-        private int CalculateScore(int branchValue, int bonus, int mobility)
-        {
-            int score = branchValue + bonus;
+        //private int CalculateScore(int branchValue, int bonus, int mobility)
+        //{
+        //    int score = branchValue + bonus;
 
-            double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0);
+        //    double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0);
 
-            score *= (int)(Math.Max(mobility, 1.0) * ratio);
+        //    score *= (int)(Math.Max(mobility, 1.0) * ratio);
 
-            return score;
-        }
+        //    return score;
+        //}
 
         /// <summary>
         /// Returns true if the board is final false otherwise
@@ -442,11 +441,15 @@ namespace ArcOthello_AC
         /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
         /// <param name="whiteTurn">true if white players turn false otherwise</param>
         /// <returns>board fitness value</returns>
-        private int Eval(int[,] gameRoot, bool whiteTurn)
+        private int Eval(int[,] gameRoot, bool whiteTurn, int bonus = 0, int mobility = 1)
         {
-            int score = 0;
+            int score = whiteTurn ? GetWhiteScore() : GetBlackScore();
 
-            score += whiteTurn ? GetWhiteScore() : GetBlackScore();
+            score += bonus;
+
+            //double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0);
+
+            //score *= (int)(Math.Max(mobility, 1.0) * ratio);
 
             return score;
         }
@@ -469,26 +472,26 @@ namespace ArcOthello_AC
         {
             if (op.Item1 == 0)
             {
-                if (op.Item2 == 1 || op.Item2 == GridHeight - 1)
+                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
                     return true;
             }
             else if (op.Item1 == 1)
             {
-                if (op.Item2 == 0 || op.Item2 == GridHeight)
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
                     return true;
-                else if (op.Item2 == 1 || op.Item2 == GridHeight - 1)
-                    return true;
-            }
-            else if (op.Item1 == GridWidth)
-            {
-                if (op.Item2 == 1 || op.Item2 == GridHeight - 1)
+                else if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
                     return true;
             }
             else if (op.Item1 == GridWidth - 1)
             {
-                if (op.Item2 == 1 || op.Item2 == GridHeight - 1)
+                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
                     return true;
-                else if (op.Item2 == 0 || op.Item2 == GridHeight)
+            }
+            else if (op.Item1 == GridWidth - 2)
+            {
+                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
+                    return true;
+                else if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
                     return true;
             }
             return false;
@@ -496,9 +499,9 @@ namespace ArcOthello_AC
         
         private bool IsInWall(Tuple<int, int> op)
         {
-            if (op.Item1 == 0 || op.Item1 == GridWidth)
+            if (op.Item1 == 0 || op.Item1 == GridWidth - 1)
                 return true;
-            if (op.Item2 == 0 || op.Item2 == GridHeight)
+            if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
                 return true;
             return false;
         }
@@ -507,12 +510,12 @@ namespace ArcOthello_AC
         {
             if (op.Item1 == 0)
             {
-                if (op.Item2 == 0 || op.Item2 == GridHeight)
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
                     return true;
             }
-            else if (op.Item1 == GridWidth)
+            else if (op.Item1 == GridWidth - 1)
             {
-                if (op.Item2 == 0 || op.Item2 == GridHeight)
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
                     return true;
             }
             return false;
