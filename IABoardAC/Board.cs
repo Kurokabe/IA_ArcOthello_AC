@@ -51,7 +51,7 @@ namespace ArcOthello_AC
             this.Init();
         }
 
-        public Board(int width = 9, int height = 7)
+        public Board(int width, int height)
         {
             this.GridWidth = width;
             this.GridHeight = height;
@@ -296,7 +296,7 @@ namespace ArcOthello_AC
         /// <returns>IA's name</returns>
         public string GetName()
         {
-            return "Jack - Java for the win";
+            return "Jack - CSS for the win";
         }
 
         /// <summary>
@@ -357,9 +357,15 @@ namespace ArcOthello_AC
         {
             // save board
             var savedBoard = GetBoard();
-            var node = Alphabeta(game, 1, 1, Eval(game, whiteTurn), whiteTurn ? 0 : 1);
+            // search for a valid move
+            var node = Alphabeta(game,                  // given board
+                                 5,                     // level
+                                 1,                     // maximize first
+                                 -int.MaxValue,         // default root score : Eval(game, whiteTurn)
+                                 whiteTurn ? 0 : 1);    // current player's color
             // restore board
             RestoreBoard(savedBoard);
+            // return move
             return node.Move;
         }
 
@@ -371,34 +377,48 @@ namespace ArcOthello_AC
         /// <param name="minOrMax">1 for maximize -1 for minimize</param>
         /// <param name="parentScore">parent's board fitness value</param>
         /// <param name="pieceSample">0 for white 1 for black</param>
+        /// <param name="lastOp">Tuple of int : x and y for latest operations's position on the board</param>
+        /// <param name="mobility">board's mobility factor</param>
         /// <returns></returns>
-        private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, int parentScore, int pieceSample, Tuple<int, int> lastOp = null, int mobility = 0)
+        private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, int parentScore, 
+                                        int pieceSample, Tuple<int, int> lastOp = null, int mobility = 0)
         {
             bool isWhite = pieceSample == 0;
 
+            // find available operations
             var availableOps = GetOps(gameRoot, isWhite);
 
-            if (level == 0 || IsFinal(gameRoot) || !availableOps.Any())
-            {
-                int bonus = 0;
-                if (availableOps.Count == 0)
-                    bonus += -minOrMax * BLOCKING_OPPONENT;
-                return new AlphabetaNode(Eval(gameRoot, isWhite, GetBonus(lastOp), mobility) + bonus);
-            }
-
+            if (level == 0 || IsFinal(gameRoot) || !availableOps.Any()) // handle leaves
+                return new AlphabetaNode(Eval(gameRoot, 
+                                              isWhite, 
+                                              GetBonus(lastOp), 
+                                              mobility,
+                                              availableOps.Count == 0 ? 
+                                                -minOrMax * BLOCKING_OPPONENT : 0));
+            
             var currentNode = new AlphabetaNode(minOrMax * -int.MaxValue);
-
-            foreach (var op in availableOps)
+            foreach (var op in availableOps) // handle nodes
             {
+                // apply the operator on the board
                 int[,] newBoard = Apply(gameRoot, op, isWhite);
 
-                var branchResult = Alphabeta(newBoard, level - 1, -minOrMax, currentNode.Value, (pieceSample + 1) % 2, op, mobility + availableOps.Count * minOrMax);
-                int val = branchResult.Value;
+                // descend in the moves tree
+                var branchResult = Alphabeta(newBoard, 
+                                             level - 1, 
+                                             -minOrMax, 
+                                             currentNode.Value, 
+                                             (pieceSample + 1) % 2, 
+                                             op, 
+                                             mobility + availableOps.Count * minOrMax);
                 
+                // compare branch results and current node value (current best move)
+                int val = branchResult.Value;
                 if (val * minOrMax > currentNode.Value * minOrMax)
                 {
                     currentNode.Value = val;
                     currentNode.Move = op;
+                    
+                    // optimization
                     if (currentNode.Value * minOrMax > parentScore * minOrMax)
                         break;
                 }
@@ -420,15 +440,15 @@ namespace ArcOthello_AC
         /// <summary>
         /// Returns true if the board is final false otherwise
         /// </summary>
-        /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
         /// <returns>true if the board is final false otherwise</returns>
-        private bool IsFinal(int[,] gameRoot)
+        private bool IsFinal(int[,] board)
         {
-            for (int y = 0; y < gameRoot.GetLength(1); y++)
+            for (int y = 0; y < GridHeight; y++) // lines
             {
-                for (int x = 0; x < gameRoot.GetLength(0); x++)
+                for (int x = 0; x < GridWidth; x++) // columns
                 {
-                    if (gameRoot[x, y] == -1)
+                    if (board[x, y] == -1)
                         return false;
                 }
             }
@@ -436,86 +456,145 @@ namespace ArcOthello_AC
         }
 
         /// <summary>
-        /// Returns board fitness value.
+        /// Returns board's fitness value.
         /// </summary>
-        /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
         /// <param name="whiteTurn">true if white players turn false otherwise</param>
+        /// <param name="bonus">board's associated bonus / malus</param>
+        /// <param name="mobility">board's mobility factor</param>
+        /// <param name="blockedOpponentBonus">blocking opponent bonus / malus</param>
         /// <returns>board fitness value</returns>
-        private int Eval(int[,] gameRoot, bool whiteTurn, int bonus = 0, int mobility = 1)
+        private int Eval(int[,] board, bool whiteTurn, int bonus = 0, int mobility = 0, int blockedOpponentBonus = 0)
         {
-            int score = whiteTurn ? GetWhiteScore() : GetBlackScore();
+            // raw score
+            int score = whiteTurn ? GetWhiteScore(board) : GetBlackScore(board);
 
-            score += bonus;
+            // add bonus / malus
+            score += Math.Max(bonus, 0);
 
+            // add blocked opponent bonus / malus
+            score += Math.Max(blockedOpponentBonus, 0);
+
+            // multiply by mobility factor
             //double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0);
-
             //score *= (int)(Math.Max(mobility, 1.0) * ratio);
 
             return score;
         }
 
-        private int GetBonus(Tuple<int, int> usedOp)
+        /// <summary>
+        /// Computes and returns operation's bonuses and maluses.
+        /// </summary>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
+        /// <returns>sum of bonuse and maluses for given operation</returns>
+        private int GetBonus(Tuple<int, int> op)
         {
             int bonus = 0;
-            if (usedOp != null && IsInCorner(usedOp))
-                bonus += CORNER_BONUS;
-            else if (usedOp != null && IsInWall(usedOp))
-                bonus -= WALL_MALUS;
-
-            if (usedOp != null && IsCornerGiving(usedOp))
-                bonus -= CORNER_GIVING_MALUS;
-
+            if (op != null)
+            {
+                if (IsInCorner(op))
+                    bonus += CORNER_BONUS;
+                if (IsInWall(op))
+                    bonus -= WALL_MALUS;
+                if (IsCornerGiving(op))
+                    bonus -= CORNER_GIVING_MALUS;
+            }
             return bonus;
         }
 
+        /// <summary>
+        /// Returns true if the given position is a weak spot around a board's corner.
+        /// 
+        ///         [ ][0 1 2 3 4 5 6 7 8] 
+        ///          0    X           X
+        ///          1  X X           X X
+        ///          2        
+        ///          3        
+        ///          4
+        ///          5 X X            X X
+        ///          6   X            X 
+        /// </summary>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
+        /// <returns>true if the given position is a weak spot around a board's corner false otherwise</returns>
         private bool IsCornerGiving(Tuple<int, int> op)
         {
-            if (op.Item1 == 0)
+            if (op.Item1 == 0)                                          // x = 0
             {
-                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
+                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)        // y = 1 || 5
                     return true;
             }
-            else if (op.Item1 == 1)
+            else if (op.Item1 == 1)                                     // x = 1
             {
-                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)        // y = 0 || 6
                     return true;
-                else if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
+                else if (op.Item2 == 1 || op.Item2 == GridHeight - 2)   // y = 1 || 5
                     return true;
             }
-            else if (op.Item1 == GridWidth - 1)
+            else if (op.Item1 == GridWidth - 1)                         // x = 8
             {
-                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
+                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)        // y = 1 || 5
                     return true;
             }
-            else if (op.Item1 == GridWidth - 2)
+            else if (op.Item1 == GridWidth - 2)                         // x = 7
             {
-                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)
+                if (op.Item2 == 1 || op.Item2 == GridHeight - 2)        // y = 1 || 5
                     return true;
-                else if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
+                else if (op.Item2 == 0 || op.Item2 == GridHeight - 1)   // y = 0 || 6
                     return true;
             }
-            return false;
-        }
-        
-        private bool IsInWall(Tuple<int, int> op)
-        {
-            if (op.Item1 == 0 || op.Item1 == GridWidth - 1)
-                return true;
-            if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
-                return true;
             return false;
         }
 
-        private bool IsInCorner(Tuple<int, int> op)
+        /// <summary>
+        /// Returns true if the given position is a board's wall.
+        /// 
+        ///         [ ][0 1 2 3 4 5 6 7 8] 
+        ///          0  X X X X X X X X X 
+        ///          1  X               X
+        ///          2  X               X 
+        ///          3  X               X        
+        ///          4  X               X 
+        ///          5  X               X 
+        ///          6  X X X X X X X X X 
+        /// </summary>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
+        /// <returns>true if the given position is a board's wall false otherwise</returns>
+        private bool IsInWall(Tuple<int, int> op)
         {
-            if (op.Item1 == 0)
+            if (!IsInCorner(op))
             {
-                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
+                if (op.Item1 == 0 || op.Item1 == GridWidth - 1)     // x = 0 || 8
+                    return true;
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)    // y = 0 || 6
                     return true;
             }
-            else if (op.Item1 == GridWidth - 1)
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if the given position is a board's corner.
+        /// 
+        ///         [ ][0 1 2 3 4 5 6 7 8] 
+        ///          0  X               X 
+        ///          1  
+        ///          2  
+        ///          3  
+        ///          4  
+        ///          5  
+        ///          6  X               X 
+        /// </summary>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
+        /// <returns>true if the given position is a board's corner false otherwise</returns>
+        private bool IsInCorner(Tuple<int, int> op)
+        {
+            if (op.Item1 == 0)                                      // x = 0
             {
-                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)    // y = 0 || 6
+                    return true;
+            }
+            else if (op.Item1 == GridWidth - 1)                     // x = 8
+            {
+                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)    // y = 0 || 6
                     return true;
             }
             return false;
@@ -524,29 +603,30 @@ namespace ArcOthello_AC
         /// <summary>
         /// Returns applicable operators for the given board.
         /// </summary>
-        /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
         /// <param name="whiteTurn">true if white players turn false otherwise</param>
         /// <returns>List of applicable operators</returns>
-        private List<Tuple<int, int>> GetOps(int[,] gameRoot, bool whiteTurn)
+        private List<Tuple<int, int>> GetOps(int[,] board, bool whiteTurn)
         {
             Team currentTeam = GetTeam(whiteTurn);
             Team currentTeamPreview = currentTeam == Team.Black ? Team.BlackPreview : Team.WhitePreview;
+            
             // convert board (int) to "our" board
-            RestoreBoard(gameRoot);
+            RestoreBoard(board);
 
             ShowPossibleMove(currentTeam);
 
+            // search for available operations (current team's preview pieces on the board)
             List<Tuple<int, int>> ops = new List<Tuple<int, int>>();
-            for (int i = 0; i < pieces.Count; i++)
+            for (int y = 0; y < GridHeight; y++) // lines
             {
-                for (int j = 0; j < pieces[i].Count; j++)
+                for (int x = 0; x < GridWidth; x++) // columns
                 {
-                    if (pieces[i][j].Team == currentTeamPreview)
-                        ops.Add(new Tuple<int, int>(i, j));
+                    if (pieces[x][y].Team == currentTeamPreview)
+                        ops.Add(new Tuple<int, int>(x, y));
                 }
             }
             return ops;
-            // return slots containing preview pieces
         }
 
         /// <summary>
@@ -555,21 +635,16 @@ namespace ArcOthello_AC
         /// <param name="board">Two-dimensional array containing 0 for white, 1 for black and -1 for empty</param>
         private void RestoreBoard(int[,] board)
         {
-            for (int i = 0; i < board.GetLength(1); i++) // lines
+            for (int y = 0; y < GridHeight; y++) // lines
             {
-                for (int j = 0; j < board.GetLength(0); j++) // columns
+                for (int x = 0; x < GridWidth; x++) // columns
                 {
-                    //pieces[j][i].Team = board[j, i] == 0 ?
-                    //    Team.White :
-                    //    board[j, i] == 1 ?
-                    //        Team.Black :
-                    //        Team.None;
-                    if (board[j, i] == 0)
-                        pieces[j][i].Team = Team.White;
-                    else if (board[j, i] == 1)
-                        pieces[j][i].Team = Team.Black;
+                    if (board[x, y] == 0)
+                        pieces[x][y].Team = Team.White;
+                    else if (board[x, y] == 1)
+                        pieces[x][y].Team = Team.Black;
                     else
-                        pieces[j][i].Team = Team.None;
+                        pieces[x][y].Team = Team.None;
                 }
             }
         }
@@ -587,14 +662,14 @@ namespace ArcOthello_AC
         /// <summary>
         /// Applies given move on the given board.
         /// </summary>
-        /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
-        /// <param name="op">operator to apply</param>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
         /// <param name="whiteTurn">true if white players turn false otherwise</param>
         /// <returns>modified 2D board with integer values</returns>
-        private int[,] Apply(int[,] gameRoot, Tuple<int, int> op, bool whiteTurn)
+        private int[,] Apply(int[,] board, Tuple<int, int> op, bool whiteTurn)
         {
             // convert board (int) to "our" board
-            RestoreBoard(gameRoot);
+            RestoreBoard(board);
             // PosePiece() with op as position and whiteTurn for team
             PosePiece(op.Item2, op.Item1, GetTeam(whiteTurn));
             // convert back the board to int array
@@ -630,15 +705,32 @@ namespace ArcOthello_AC
             {
                 for (int x = 0; x < GridWidth; x++)
                 {
-                    if (this[y, x] != null)
-                        whiteScore += this[y, x].Team == Team.White ? 1 : 0;
+                    whiteScore += this[y, x].Team == Team.White ? 1 : 0;
                 }
             }
             return whiteScore;
         }
 
         /// <summary>
-        /// Returns the number of black tiles
+        /// Returns the number of white tiles on the given board
+        /// </summary>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <returns>white player's score</returns>
+        public int GetWhiteScore(int[,] board)
+        {
+            int whiteScore = 0;
+            for (int y = 0; y < GridHeight; y++)
+            {
+                for (int x = 0; x < GridWidth; x++)
+                {
+                    whiteScore += board[x, y] == 0 ? 1 : 0;
+                }
+            }
+            return whiteScore;
+        }
+
+        /// <summary>
+        /// Returns the number of black tiles on the board.
         /// </summary>
         /// <returns>black player's score</returns>
         public int GetBlackScore()
@@ -648,8 +740,25 @@ namespace ArcOthello_AC
             {
                 for (int x = 0; x < GridWidth; x++)
                 {
-                    if (this[y, x] != null)
-                        blackScore += this[y, x].Team == Team.Black ? 1 : 0;
+                    blackScore += this[y, x].Team == Team.Black ? 1 : 0;
+                }
+            }
+            return blackScore;
+        }
+
+        /// <summary>
+        /// Returns the number of black tiles on the given board.
+        /// </summary>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <returns>black player's score</returns>
+        public int GetBlackScore(int[,] board)
+        {
+            int blackScore = 0;
+            for (int y = 0; y < GridHeight; y++)
+            {
+                for (int x = 0; x < GridWidth; x++)
+                {
+                    blackScore += board[x, y] == 1 ? 1 : 0;
                 }
             }
             return blackScore;
