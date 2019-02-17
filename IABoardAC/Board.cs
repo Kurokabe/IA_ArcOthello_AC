@@ -3,20 +3,16 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Runtime.InteropServices;
 
 namespace ArcOthello_AC
 {
     public class Board : IPlayable.IPlayable
     {
         #region IA Parameters
-        [DllImport("kernel32")]
-        static extern bool AllocConsole();
-
         private const int CORNER_BONUS = 500;           // Bonus for playing in a corner
         private const int WALL_MALUS = 30;              // Malus for playing on a wall
         private const int CORNER_GIVING_MALUS = 80;     // Malus for playing in a weak spot around corners
-        private const int RISKY_TERRITORY_MALUS = 20;
+        private const int RISKY_TERRITORY_MALUS = 20;   // Malus for playing in a risky spot
         private const int EARLY_ROUNDS = 25;            // Number of rounds until the mobility is far less important than raw score
         private int roundNumber = 0;                    // counter of game's rounds
         #endregion
@@ -50,7 +46,6 @@ namespace ArcOthello_AC
         #region Constructors and Initializers
         public Board()
         {
-            AllocConsole();
             this.GridWidth = 9;
             this.GridHeight = 7;
             this.Init();
@@ -340,45 +335,6 @@ namespace ArcOthello_AC
         }
 
         /// <summary>
-        /// Asks the game engine next (valid) move given a game position
-        /// The board assumes following standard move notation:
-        /// 
-        ///             A B C D E F G H I
-        ///         [ ][0 1 2 3 4 5 6 7 8]     (first index)
-        ///        1 0
-        ///        2 1
-        ///        3 2        X
-        ///        4 3            X
-        ///        5 4
-        ///        6 5
-        ///        7 6
-        ///       
-        ///          Column Line
-        ///  E.g.:    D3, F4 game notation will map to {3,2} resp. {5,3}
-        /// </summary>
-        /// <param name="game">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
-        /// <param name="level">an integer value to set the level of the IA, 5 normally</param>
-        /// <param name="whiteTurn">true if white players turn, false otherwise</param>
-        /// <returns>The column and line indices. Will return {-1,-1} as PASS if no possible move </returns>
-        public Tuple<int, int> GetNextMove(int[,] game, int level, bool whiteTurn)
-        {
-            // save board
-            var savedBoard = GetBoard();
-            // search valid move
-            var node = Alphabeta(game,                  // given board
-                                 level,                 // level
-                                 1,                     // maximize first
-                                 -int.MaxValue,         // default root score
-                                 whiteTurn ? 0 : 1,     // current player's color
-                                 roundNumber);    
-            // restore board
-            RestoreBoard(savedBoard);
-
-            // return move
-            return node.Move;
-        }
-
-        /// <summary>
         /// Change the values of our board (the observable collection of pieces) so that it matches the board in argument
         /// </summary>
         /// <param name="board">Two-dimensional array containing 0 for white, 1 for black and -1 for empty</param>
@@ -499,6 +455,45 @@ namespace ArcOthello_AC
 
         #region IA
         /// <summary>
+        /// Asks the game engine next (valid) move given a game position
+        /// The board assumes following standard move notation:
+        /// 
+        ///             A B C D E F G H I
+        ///         [ ][0 1 2 3 4 5 6 7 8]     (first index)
+        ///        1 0
+        ///        2 1
+        ///        3 2        X
+        ///        4 3            X
+        ///        5 4
+        ///        6 5
+        ///        7 6
+        ///       
+        ///          Column Line
+        ///  E.g.:    D3, F4 game notation will map to {3,2} resp. {5,3}
+        /// </summary>
+        /// <param name="game">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="level">an integer value to set the level of the IA, 5 normally</param>
+        /// <param name="whiteTurn">true if white players turn, false otherwise</param>
+        /// <returns>The column and line indices. Will return {-1,-1} as PASS if no possible move </returns>
+        public Tuple<int, int> GetNextMove(int[,] game, int level, bool whiteTurn)
+        {
+            // save board
+            var savedBoard = GetBoard();
+            // search valid move
+            var node = Alphabeta(game,                  // given board
+                                 level,                 // level
+                                 1,                     // maximize first
+                                 -int.MaxValue,         // default root score
+                                 whiteTurn ? 0 : 1,     // current player's color
+                                 roundNumber);          // current round number
+            // restore board
+            RestoreBoard(savedBoard);
+
+            // return move
+            return node.Move;
+        }
+
+        /// <summary>
         /// Finds optimized move.
         /// </summary>
         /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
@@ -595,6 +590,7 @@ namespace ArcOthello_AC
             // raw score
             double score = whiteTurn ? GetWhiteScore(board) : GetBlackScore(board);
 
+            // linear equation in order to minimize the number of our pieces on the board in the early rounds
             score *= Math.Max(EARLY_ROUNDS - currentRoundNumber, 0.0) / EARLY_ROUNDS;
 
             // add bonus / malus
@@ -778,7 +774,6 @@ namespace ArcOthello_AC
                    CheckPosition(gameRoot, x + 1, y + 1) +
                    CheckPosition(gameRoot, x + 1, y - 1) +
                    CheckPosition(gameRoot, x + 1, y + 1);
-
         }
 
         /// <summary>
