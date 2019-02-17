@@ -17,9 +17,7 @@ namespace ArcOthello_AC
         private const int WALL_MALUS = 30;              // Malus for playing on a wall
         private const int CORNER_GIVING_MALUS = 80;     // Malus for playing in a weak spot around corners
         private const int RISKY_TERRITORY_MALUS = 20;
-        private const int FRONTIER_MALUS = 5;           // Malus for playing on a frontier
         private const int EARLY_ROUNDS = 25;            // Number of rounds until the mobility is far less important than raw score
-        private const int BLOCKING_OPPONENT = 0;        // Bonus for making an opponent pass his turn
         private int roundNumber = 0;                    // counter of game's rounds
         #endregion
 
@@ -297,13 +295,15 @@ namespace ArcOthello_AC
         #endregion
 
         #region IPlayable Implementation
+
+        #region Board specific implementation
         /// <summary>
         /// Returns the IA's name
         /// </summary>
         /// <returns>IA's name</returns>
         public string GetName()
         {
-            return "Jack - Python 3.63 for the win";
+            return "Jack - Python 3.7";
         }
 
         /// <summary>
@@ -379,6 +379,126 @@ namespace ArcOthello_AC
         }
 
         /// <summary>
+        /// Change the values of our board (the observable collection of pieces) so that it matches the board in argument
+        /// </summary>
+        /// <param name="board">Two-dimensional array containing 0 for white, 1 for black and -1 for empty</param>
+        private void RestoreBoard(int[,] board)
+        {
+            for (int y = 0; y < GridHeight; y++) // lines
+            {
+                for (int x = 0; x < GridWidth; x++) // columns
+                {
+                    if (board[x, y] == 0)
+                        pieces[x][y].Team = Team.White;
+                    else if (board[x, y] == 1)
+                        pieces[x][y].Team = Team.Black;
+                    else
+                        pieces[x][y].Team = Team.None;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Return the team based on whether it is the white or black turn
+        /// </summary>
+        /// <param name="whiteTurn">True for white, false for black</param>
+        /// <returns>Team.White if white turn, Team.Black otherwise</returns>
+        private Team GetTeam(bool whiteTurn)
+        {
+            return whiteTurn ? Team.White : Team.Black;
+        }
+
+        /// <summary>
+        /// Returns a reference to a 2D array with the board status
+        /// </summary>
+        /// <returns>The 7x9 tiles status</returns>
+        public int[,] GetBoard()
+        {
+            int[,] boardInt = new int[GridWidth, GridHeight];
+            for (int x = 0; x < GridWidth; x++)
+            {
+                for (int y = 0; y < GridHeight; y++)
+                {
+                    boardInt[x, y] = this[y, x].Team == Team.Black ? 1 :
+                                     this[y, x].Team == Team.White ? 0 : -1;
+                }
+            }
+            return boardInt;
+        }
+
+        /// <summary>
+        /// Returns the number of white tiles on the board
+        /// </summary>
+        /// <returns>white player's score</returns>
+        public int GetWhiteScore()
+        {
+            int whiteScore = 0;
+            for (int y = 0; y < GridHeight; y++)
+            {
+                for (int x = 0; x < GridWidth; x++)
+                {
+                    whiteScore += this[y, x].Team == Team.White ? 1 : 0;
+                }
+            }
+            return whiteScore;
+        }
+
+        /// <summary>
+        /// Returns the number of white tiles on the given board
+        /// </summary>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <returns>white player's score</returns>
+        public int GetWhiteScore(int[,] board)
+        {
+            int whiteScore = 0;
+            for (int y = 0; y < GridHeight; y++)
+            {
+                for (int x = 0; x < GridWidth; x++)
+                {
+                    whiteScore += board[x, y] == 0 ? 1 : 0;
+                }
+            }
+            return whiteScore;
+        }
+
+        /// <summary>
+        /// Returns the number of black tiles on the board.
+        /// </summary>
+        /// <returns>black player's score</returns>
+        public int GetBlackScore()
+        {
+            int blackScore = 0;
+            for (int y = 0; y < GridHeight; y++)
+            {
+                for (int x = 0; x < GridWidth; x++)
+                {
+                    blackScore += this[y, x].Team == Team.Black ? 1 : 0;
+                }
+            }
+            return blackScore;
+        }
+
+        /// <summary>
+        /// Returns the number of black tiles on the given board.
+        /// </summary>
+        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <returns>black player's score</returns>
+        public int GetBlackScore(int[,] board)
+        {
+            int blackScore = 0;
+            for (int y = 0; y < GridHeight; y++)
+            {
+                for (int x = 0; x < GridWidth; x++)
+                {
+                    blackScore += board[x, y] == 1 ? 1 : 0;
+                }
+            }
+            return blackScore;
+        }
+        #endregion
+
+        #region IA
+        /// <summary>
         /// Finds optimized move.
         /// </summary>
         /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
@@ -403,9 +523,6 @@ namespace ArcOthello_AC
                                        Eval(gameRoot,                               // board after playing lastOp
                                             !isWhite,                               // player who played lastOp
                                             GetBonus(gameRoot, lastOp),             // bonus / malus for playing lastOp
-                                            availableOps.Count,                     // number of available moves after playing lastOp (mobility)
-                                            availableOps.Count == 0 ?               
-                                                BLOCKING_OPPONENT : 0,              // blocking opponent bonus / malus
                                             currentRoundNumber) :                   // current round number
                                        0;
             currentNodeScore *= minOrMax;
@@ -473,7 +590,7 @@ namespace ArcOthello_AC
         /// <param name="blockedOpponentBonus">blocking opponent bonus / malus</param>
         /// <param name="currentRoundNumber">number of the current round</param>
         /// <returns>board fitness value</returns>
-        private double Eval(int[,] board, bool whiteTurn, int bonus, int mobility, int blockedOpponentBonus, int currentRoundNumber)
+        private double Eval(int[,] board, bool whiteTurn, int bonus, int currentRoundNumber)
         {
             // raw score
             double score = whiteTurn ? GetWhiteScore(board) : GetBlackScore(board);
@@ -482,15 +599,6 @@ namespace ArcOthello_AC
 
             // add bonus / malus
             score += bonus;
-
-            // add blocked opponent bonus / malus
-            score += blockedOpponentBonus;
-
-            // multiply by mobility factor
-            //double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0) / EARLY_ROUNDS;
-            //score *= Math.Max(mobility, 1.0) * ratio;
-
-            //score += mobility;
 
             return score;
         }
@@ -515,7 +623,7 @@ namespace ArcOthello_AC
                 if (IsRiskyTerritory(op))
                     bonus -= RISKY_TERRITORY_MALUS;
 
-                //bonus -= IsFrontier(gameRoot, op);
+                bonus -= IsFrontier(gameRoot, op);
             }
             return bonus;
         }
@@ -652,6 +760,12 @@ namespace ArcOthello_AC
             return false;
         }
 
+        /// <summary>
+        /// Check the if the position on the board is on the frontier and if so, return the number of empty slots
+        /// </summary>
+        /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
+        /// <returns>Number of empty slots around the position</returns>
         private int IsFrontier(int[,] gameRoot, Tuple<int, int> op)
         {
             int x = op.Item1, y = op.Item2;
@@ -667,6 +781,13 @@ namespace ArcOthello_AC
 
         }
 
+        /// <summary>
+        /// Check if the position is valid and if so, check if it is an empty slot
+        /// </summary>
+        /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
+        /// <param name="x">X position of the move</param>
+        /// <param name="y">Y poition of the move</param>
+        /// <returns>0 if the position is invalid (outside the grid) or is not empty, 1 otherwise</returns>
         private int CheckPosition(int[,] gameRoot, int x, int y)
         {
             if (x < 0 || x >= GridWidth || y < 0 || y >= GridHeight)
@@ -704,37 +825,7 @@ namespace ArcOthello_AC
             }
             return ops;
         }
-
-        /// <summary>
-        /// Change the values of our board (the observable collection of pieces) so that it matches the board in argument
-        /// </summary>
-        /// <param name="board">Two-dimensional array containing 0 for white, 1 for black and -1 for empty</param>
-        private void RestoreBoard(int[,] board)
-        {
-            for (int y = 0; y < GridHeight; y++) // lines
-            {
-                for (int x = 0; x < GridWidth; x++) // columns
-                {
-                    if (board[x, y] == 0)
-                        pieces[x][y].Team = Team.White;
-                    else if (board[x, y] == 1)
-                        pieces[x][y].Team = Team.Black;
-                    else
-                        pieces[x][y].Team = Team.None;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Return the team based on whether it is the white or black turn
-        /// </summary>
-        /// <param name="whiteTurn">True for white, false for black</param>
-        /// <returns>Team.White if white turn, Team.Black otherwise</returns>
-        private Team GetTeam(bool whiteTurn)
-        {
-            return whiteTurn ? Team.White : Team.Black;
-        }
-
+        
         /// <summary>
         /// Applies given move on the given board.
         /// </summary>
@@ -756,94 +847,8 @@ namespace ArcOthello_AC
             // convert back the board to int array
             return GetBoard();
         }
-
-        /// <summary>
-        /// Returns a reference to a 2D array with the board status
-        /// </summary>
-        /// <returns>The 7x9 tiles status</returns>
-        public int[,] GetBoard()
-        {
-            int[,] boardInt = new int[GridWidth, GridHeight];
-            for (int x = 0; x < GridWidth; x++)
-            {
-                for (int y = 0; y < GridHeight; y++)
-                {
-                    boardInt[x, y] = this[y, x].Team == Team.Black ? 1 :
-                                     this[y, x].Team == Team.White ? 0 : -1;
-                }
-            }
-            return boardInt;
-        }
-
-        /// <summary>
-        /// Returns the number of white tiles on the board
-        /// </summary>
-        /// <returns>white player's score</returns>
-        public int GetWhiteScore()
-        {
-            int whiteScore = 0;
-            for (int y = 0; y < GridHeight; y++)
-            {
-                for (int x = 0; x < GridWidth; x++)
-                {
-                    whiteScore += this[y, x].Team == Team.White ? 1 : 0;
-                }
-            }
-            return whiteScore;
-        }
-
-        /// <summary>
-        /// Returns the number of white tiles on the given board
-        /// </summary>
-        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
-        /// <returns>white player's score</returns>
-        public int GetWhiteScore(int[,] board)
-        {
-            int whiteScore = 0;
-            for (int y = 0; y < GridHeight; y++)
-            {
-                for (int x = 0; x < GridWidth; x++)
-                {
-                    whiteScore += board[x, y] == 0 ? 1 : 0;
-                }
-            }
-            return whiteScore;
-        }
-
-        /// <summary>
-        /// Returns the number of black tiles on the board.
-        /// </summary>
-        /// <returns>black player's score</returns>
-        public int GetBlackScore()
-        {
-            int blackScore = 0;
-            for (int y = 0; y < GridHeight; y++)
-            {
-                for (int x = 0; x < GridWidth; x++)
-                {
-                    blackScore += this[y, x].Team == Team.Black ? 1 : 0;
-                }
-            }
-            return blackScore;
-        }
-
-        /// <summary>
-        /// Returns the number of black tiles on the given board.
-        /// </summary>
-        /// <param name="board">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
-        /// <returns>black player's score</returns>
-        public int GetBlackScore(int[,] board)
-        {
-            int blackScore = 0;
-            for (int y = 0; y < GridHeight; y++)
-            {
-                for (int x = 0; x < GridWidth; x++)
-                {
-                    blackScore += board[x, y] == 1 ? 1 : 0;
-                }
-            }
-            return blackScore;
-        }
+        #endregion
+        
         #endregion
     }
 }
