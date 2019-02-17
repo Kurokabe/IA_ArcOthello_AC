@@ -483,7 +483,7 @@ namespace ArcOthello_AC
             var node = Alphabeta(game,                  // given board
                                  level,                 // level
                                  1,                     // maximize first
-                                 -int.MaxValue,         // default root score
+                                 int.MaxValue,          // default root score
                                  whiteTurn ? 0 : 1,     // current player's color
                                  roundNumber);          // current round number
             // restore board
@@ -520,13 +520,13 @@ namespace ArcOthello_AC
                                             GetBonus(gameRoot, lastOp),             // bonus / malus for playing lastOp
                                             currentRoundNumber) :                   // current round number
                                        0;
-            currentNodeScore *= minOrMax;
-            
+            currentNodeScore *= -minOrMax; // the score of the operation is added or subtracted according to the player who played it
+
 
             if (level == 0 || IsFinal(gameRoot) || !availableOps.Any()) // handle leaves
                 return new AlphabetaNode(currentNodeScore + lastNodesScore);
 
-            var currentNode = new AlphabetaNode(-minOrMax * -int.MaxValue);
+            var currentNode = new AlphabetaNode(minOrMax * -int.MaxValue);
             foreach (var op in availableOps) // handle nodes
             {
                 // apply the operation to the board
@@ -544,13 +544,13 @@ namespace ArcOthello_AC
 
                 // compare branch results and current node value (current best move)
                 double val = branchResult.Value;
-                if (val * -minOrMax > currentNode.Value * -minOrMax)
+                if (val * minOrMax > currentNode.Value * minOrMax)
                 {
                     currentNode.Value = val;
                     currentNode.Move = op;
                     
                     // optimization
-                    if (currentNode.Value * -minOrMax > parentBestScore * -minOrMax)
+                    if (currentNode.Value * minOrMax > parentBestScore * minOrMax)
                         break;
                 }
             }
