@@ -495,6 +495,7 @@ namespace ArcOthello_AC
 
         /// <summary>
         /// Finds optimized move.
+        /// Adapted from "Algorithmes de Jeux", Hatem Ghorbel and Stefano Carrino, HE-Arc Ingénierie, 2018-2019.
         /// </summary>
         /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
         /// <param name="level">an integer value to set the level of the IA, 5 normally</param>
