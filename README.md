@@ -3,7 +3,7 @@ Cours d'Intelligence Artificielle.
 
 Abdalla Farid, Chacun Guillaume - IA: Jack
 
-2018-2019
+HE-Arc Ingénierie, 2018-2019
 
 ## Fonction d'évaluation
 Notre fonction d'évaluation se base essentiellement sur des bonus / malus ajoutés à un score calculé en fonction du nombre de pions sur le plateau.
