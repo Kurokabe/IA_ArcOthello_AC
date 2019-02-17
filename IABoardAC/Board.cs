@@ -13,12 +13,14 @@ namespace ArcOthello_AC
         [DllImport("kernel32")]
         static extern bool AllocConsole();
 
-        private const int CORNER_BONUS = 50;        // Bonus for playing in a corner
-        private const int WALL_MALUS = 10;          // Malus for playing on a wall
-        private const int CORNER_GIVING_MALUS = 80; // Malus for playing in a weak spot around corners
-        private const int EARLY_ROUNDS = 15;        // Number of rounds until the mobility is far less important than raw score
-        private const int BLOCKING_OPPONENT = 0;    // Bonus for making an opponent pass his turn
-        private int roundNumber = 0;                // counter of game's rounds
+        private const int CORNER_BONUS = 500;           // Bonus for playing in a corner
+        private const int WALL_MALUS = 30;              // Malus for playing on a wall
+        private const int CORNER_GIVING_MALUS = 80;     // Malus for playing in a weak spot around corners
+        private const int RISKY_TERRITORY_MALUS = 20;
+        private const int FRONTIER_MALUS = 5;           // Malus for playing on a frontier
+        private const int EARLY_ROUNDS = 25;            // Number of rounds until the mobility is far less important than raw score
+        private const int BLOCKING_OPPONENT = 0;        // Bonus for making an opponent pass his turn
+        private int roundNumber = 0;                    // counter of game's rounds
         #endregion
 
         #region Properties
@@ -301,7 +303,7 @@ namespace ArcOthello_AC
         /// <returns>IA's name</returns>
         public string GetName()
         {
-            return "Jack - Python 3.0 for the win";
+            return "Jack - Python 3.63 for the win";
         }
 
         /// <summary>
@@ -364,10 +366,11 @@ namespace ArcOthello_AC
             var savedBoard = GetBoard();
             // search valid move
             var node = Alphabeta(game,                  // given board
-                                 5,                     // level
+                                 level,                 // level
                                  1,                     // maximize first
                                  -int.MaxValue,         // default root score
-                                 whiteTurn ? 0 : 1);    // current player's color
+                                 whiteTurn ? 0 : 1,     // current player's color
+                                 roundNumber);    
             // restore board
             RestoreBoard(savedBoard);
 
@@ -383,11 +386,12 @@ namespace ArcOthello_AC
         /// <param name="minOrMax">1 for maximize -1 for minimize</param>
         /// <param name="parentBestScore">parent's best board fitness value</param>
         /// <param name="pieceSample">0 for white 1 for black</param>
+        /// <param name="currentRoundNumber">number of the current round</param>
         /// <param name="lastOp">Tuple of int : x and y for latest operations's position on the board</param>
         /// <param name="lastNodesScore">sum of the previous boards fitness value</param>
         /// <returns></returns>
-        private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, int parentBestScore, int pieceSample,
-                                        Tuple<int, int> lastOp = null, int lastNodesScore = 0)
+        private AlphabetaNode Alphabeta(int[,] gameRoot, int level, int minOrMax, double parentBestScore, int pieceSample, int currentRoundNumber,
+                                        Tuple<int, int> lastOp = null, double lastNodesScore = 0)
         {
             bool isWhite = pieceSample == 0;
 
@@ -395,13 +399,14 @@ namespace ArcOthello_AC
             var availableOps = GetOps(gameRoot, isWhite);
 
             // compute current node's score
-            int currentNodeScore = (lastOp != null) ? // if it's not the tree's root
+            double currentNodeScore = (lastOp != null) ? // if it's not the tree's root
                                        Eval(gameRoot,                               // board after playing lastOp
                                             !isWhite,                               // player who played lastOp
                                             GetBonus(gameRoot, lastOp),             // bonus / malus for playing lastOp
-                                            availableOps.Count * minOrMax,          // number of available moves after playing lastOp (mobility)
+                                            availableOps.Count,                     // number of available moves after playing lastOp (mobility)
                                             availableOps.Count == 0 ?               
-                                                -minOrMax * BLOCKING_OPPONENT : 0) : // blocking opponent bonus / malus
+                                                BLOCKING_OPPONENT : 0,              // blocking opponent bonus / malus
+                                            currentRoundNumber) :                   // current round number
                                        0;
             currentNodeScore *= minOrMax;
             
@@ -421,11 +426,12 @@ namespace ArcOthello_AC
                                              -minOrMax,                          // inverse minOrMax (maximize / minimize)
                                              currentNode.Value,                  // best operation's score yet
                                              (pieceSample + 1) % 2,              // inverse player's turn
+                                             currentRoundNumber + 1,             // next round number
                                              op,                                 // played move
                                              currentNodeScore + lastNodesScore); // tree branch's fitness value
-                
+
                 // compare branch results and current node value (current best move)
-                int val = branchResult.Value;
+                double val = branchResult.Value;
                 if (val * -minOrMax > currentNode.Value * -minOrMax)
                 {
                     currentNode.Value = val;
@@ -465,11 +471,14 @@ namespace ArcOthello_AC
         /// <param name="bonus">board's associated bonus / malus</param>
         /// <param name="mobility">board's mobility factor</param>
         /// <param name="blockedOpponentBonus">blocking opponent bonus / malus</param>
+        /// <param name="currentRoundNumber">number of the current round</param>
         /// <returns>board fitness value</returns>
-        private int Eval(int[,] board, bool whiteTurn, int bonus, int mobility, int blockedOpponentBonus)
+        private double Eval(int[,] board, bool whiteTurn, int bonus, int mobility, int blockedOpponentBonus, int currentRoundNumber)
         {
             // raw score
-            int score = whiteTurn ? GetWhiteScore(board) : GetBlackScore(board);
+            double score = whiteTurn ? GetWhiteScore(board) : GetBlackScore(board);
+
+            score *= Math.Max(EARLY_ROUNDS - currentRoundNumber, 0.0) / EARLY_ROUNDS;
 
             // add bonus / malus
             score += bonus;
@@ -478,8 +487,10 @@ namespace ArcOthello_AC
             score += blockedOpponentBonus;
 
             // multiply by mobility factor
-            //int ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1);
-            //score *= Math.Max(mobility, 1) * ratio;
+            //double ratio = Math.Max(EARLY_ROUNDS - roundNumber, 1.0) / EARLY_ROUNDS;
+            //score *= Math.Max(mobility, 1.0) * ratio;
+
+            //score += mobility;
 
             return score;
         }
@@ -499,8 +510,12 @@ namespace ArcOthello_AC
                     bonus += CORNER_BONUS;
                 if (IsInWall(op))
                     bonus -= WALL_MALUS;
-                if (IsCornerGiving(op, gameRoot))
+                if (IsWeakSpotAroundCorner(op, gameRoot))
                     bonus -= CORNER_GIVING_MALUS;
+                if (IsRiskyTerritory(op))
+                    bonus -= RISKY_TERRITORY_MALUS;
+
+                //bonus -= IsFrontier(gameRoot, op);
             }
             return bonus;
         }
@@ -520,7 +535,7 @@ namespace ArcOthello_AC
         /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
         /// <param name="gameRoot">a 2D board with integer values: 0 for white 1 for black and -1 for empty tiles. First index for the column, second index for the line</param>
         /// <returns>true if the given position is a weak spot around a board's corner false otherwise</returns>
-        private bool IsCornerGiving(Tuple<int, int> op, int[,] gameRoot)
+        private bool IsWeakSpotAroundCorner(Tuple<int, int> op, int[,] gameRoot)
         {
             int x = op.Item1;
             int y = op.Item2;
@@ -556,25 +571,55 @@ namespace ArcOthello_AC
         /// Returns true if the given position is a board's wall.
         /// 
         ///         [ ][0 1 2 3 4 5 6 7 8] 
-        ///          0  X X X X X X X X X 
-        ///          1  X               X
+        ///          0      X X X X X     
+        ///          1                   
         ///          2  X               X 
         ///          3  X               X        
         ///          4  X               X 
-        ///          5  X               X 
-        ///          6  X X X X X X X X X 
+        ///          5                    
+        ///          6      X X X X X     
         /// </summary>
         /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
         /// <returns>true if the given position is a board's wall false otherwise</returns>
         private bool IsInWall(Tuple<int, int> op)
         {
-            if (!IsInCorner(op))
-            {
-                if (op.Item1 == 0 || op.Item1 == GridWidth - 1)     // x = 0 || 8
-                    return true;
-                if (op.Item2 == 0 || op.Item2 == GridHeight - 1)    // y = 0 || 6
-                    return true;
-            }
+            int[] wallX = new int[] { 2, 3, 4, 5, 6 };
+            int[] wallY = new int[] { 2, 3, 4 };
+
+            if (op.Item1 == 0 && wallY.Contains(op.Item2) ||
+                op.Item1 == GridWidth - 1 && wallY.Contains(op.Item2) ||
+                op.Item2 == 0 && wallX.Contains(op.Item1) ||
+                op.Item2 == GridHeight - 1 && wallX.Contains(op.Item1))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if the given position is a risky position.
+        /// 
+        ///         [ ][0 1 2 3 4 5 6 7 8]
+        ///          0
+        ///          1      X X X X X     
+        ///          2    X           X    
+        ///          3    X           X           
+        ///          4    X           X                        
+        ///          5      X X X X X     
+        ///          6
+        /// </summary>
+        /// <param name="op">Tuple of int : x and y for operations's position on the board</param>
+        /// <returns>true if the given position is a risky territory false otherwise</returns>
+        private bool IsRiskyTerritory(Tuple<int, int> op)
+        {
+            int[] wallX = new int[] { 2, 3, 4, 5, 6 };
+            int[] wallY = new int[] { 2, 3, 4 };
+
+            if (op.Item1 == 1 && wallY.Contains(op.Item2) ||
+                op.Item1 == GridWidth - 2 && wallY.Contains(op.Item2) ||
+                op.Item2 == 1 && wallX.Contains(op.Item1) ||
+                op.Item2 == GridHeight - 2 && wallX.Contains(op.Item1))
+                return true;
+
             return false;
         }
 
@@ -605,6 +650,30 @@ namespace ArcOthello_AC
                     return true;
             }
             return false;
+        }
+
+        private int IsFrontier(int[,] gameRoot, Tuple<int, int> op)
+        {
+            int x = op.Item1, y = op.Item2;
+
+            return CheckPosition(gameRoot, x - 1, y) +
+                   CheckPosition(gameRoot, x, y - 1) +
+                   CheckPosition(gameRoot, x - 1, y - 1) +
+                   CheckPosition(gameRoot, x + 1, y) +
+                   CheckPosition(gameRoot, x, y + 1) +
+                   CheckPosition(gameRoot, x + 1, y + 1) +
+                   CheckPosition(gameRoot, x + 1, y - 1) +
+                   CheckPosition(gameRoot, x + 1, y + 1);
+
+        }
+
+        private int CheckPosition(int[,] gameRoot, int x, int y)
+        {
+            if (x < 0 || x >= GridWidth || y < 0 || y >= GridHeight)
+                return 0;
+            if (gameRoot[x, y] == -1)
+                return 1;
+            return 0;
         }
 
         /// <summary>

@@ -7,7 +7,7 @@ namespace IABoardAC
     class AlphabetaNode
     {
         #region Properties
-        public int Value { get; set; }
+        public double Value { get; set; }
         public Tuple<int, int> Move { get; set; }
         #endregion
 
@@ -17,12 +17,12 @@ namespace IABoardAC
             Move = new Tuple<int, int>(-1, -1);
         }
 
-        public AlphabetaNode(int value) : this()
+        public AlphabetaNode(double value) : this()
         {
             Value = value;
         }
 
-        public AlphabetaNode(int value, Tuple<int, int> move)
+        public AlphabetaNode(double value, Tuple<int, int> move)
         {
             Value = value;
             Move = move;
