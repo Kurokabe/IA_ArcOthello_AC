@@ -5,6 +5,11 @@ Abdalla Farid, Chacun Guillaume - IA: Jack
 
 HE-Arc Ingénierie, 2018-2019
 
+## Généralités
+Les différentes classes et méthodes de gestion du jeu Othello ont été reprises de notre projet ArcOthello_AC du cours de .NET.
+
+Le code lié à l'implémentation de l'intelligence artificielle se trouve dans les classes Board.cs et AlphabetaNode.cs. L'implémentation des méthodes de l'interface IPlayable qui a été implémentée se trouve dans la classe Board, dans la "region IPlayable". L'implémentation de Alphabeta et des méthodes directement liées à l'IA se trouvent dans cette même classe dans la "region IA".
+
 ## Fonction d'évaluation
 Notre fonction d'évaluation se base essentiellement sur des bonus / malus ajoutés à un score calculé en fonction du nombre de pions sur le plateau.
 
